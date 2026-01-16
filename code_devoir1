@@ -1,17 +1,18 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import sparse
+import scipy.sparse as sp
 import bisect
+from matplotlib.ticker import AutoMinorLocator
 
 # Paramètres du problème
 L = 2 #[m] ; Épaisseur du mur
-k = 0.5 #[W/(m*K)]; La conductivité thermique de la brique
-h = 20 #[W/(m^2*K)]; Coefficient de transfert thermique pour l'interface plane entre l'air et solide.
+k = 1 #[W/(m*K)]; La conductivité thermique de la brique
+h = 10 #[W/(m^2*K)]; Coefficient de transfert thermique pour l'interface plane entre l'air et solide.
 Cv = 1000 # [J/(kg*K)] ; Capacité thermique volumique
 rho = 2000 # [kg/m^3] ; Masse volumique
 alpha = (Cv*rho)/k
-xi = 0.5 # Paramètre déterminant la méthode numérique (0: explicite, 1: implicite, 0.5: Crank-Nicolson)
+xi = 0.75 # Paramètre déterminant la méthode numérique (0: explicite, 1: implicite, 0.5: Crank-Nicolson)
 
 # Condition convective (de Robin) à x=0 (face externe du mur): -k*dT/dx=h(Ta-T)
 Ta = -15; #[oC]
@@ -19,10 +20,8 @@ c1 = -k; c2 = h; c3 = -h*Ta
 # Condition convective (de Robin) à x=L (face interne du mur): -k*dT/dx=h(T-Ta)
 d1 = -k; d2 = -h; d3 = h*Ta
 
-
 Nar = np.array([200]) # Nombre de noeuds du domaine
-#Nar1= np.concatenate((np.arange(2, 11, 1), np.arange(20, 110, 10), np.arange(200, 1100, 100), np.arange(2000, 6000, 1000))); # Matrice pleine
- 
+
 # Pour évaluer l'erreur, on teste avec N et 2*N noeuds
 #Nar = np.zeros(2*Nar1.size,dtype=Nar1.dtype)
 #Nar[np.arange(0,2*Nar1.size-1,2)] = Nar1.copy()
@@ -51,18 +50,30 @@ for N in Nar:
     u_n = Ta * np.ones(N+1,dtype=np.double) # Condition initiale
 
     # Calcul de la source à chaque point du maillage (ici indépendant de t)
-    dL = 0.1
+    dL = 0.5 # m
     q = 400 # W/m^3;
     S = q*np.exp(-x/dL)
 
-    # Matrice A (indépendante de t)
-    A = np.diag(-2*np.ones(N+1),0)+np.diag(np.ones(N),-1)+np.diag(np.ones(N),1)
-    A[0,0] = 2*c2*dx-3*c1; A[0,1] = 4*c1;A[0,2]=-c1
-    A[N,N] = 3*d1+2*d2*dx; A[N,N-1] = -4*d1;A[N,N-2]=d1
+    e = np.ones(N+1)
 
-    # Matrice M  (indépendante de t)
-    M = np.diag(np.ones(N+1),0)
-    M[0,0] = 0; M[N,N] = 0
+    # Matrice A (indépendante de t)
+    A = sp.diags(
+        diagonals=[e[:-1], -2*e, e[:-1]],
+        offsets=[-1, 0, 1],
+        shape=(N+1, N+1),
+        format="lil"
+    )
+
+    # Conditions aux bords
+    A[0, 0] = 2*c2*dx - 3*c1; A[0, 1] = 4*c1; A[0, 2] = -c1
+    A[N, N]     = 3*d1 + 2*d2*dx; A[N, N-1]   = -4*d1; A[N, N-2]   = d1
+
+    # Identité
+    M = sp.eye(N+1, format="lil")
+
+    # Conditions aux bords
+    M[0, 0] = 0
+    M[N, N] = 0
 
     # Vecteur b (indépendant de t)
     b = - S/k*dx**2; 
@@ -70,7 +81,7 @@ for N in Nar:
     b[N] = -2*d3*dx
 
     # A_prime pour la résolution dépendente du temps (indépendante de t)
-    A_prime = sparse.csr_matrix(M - dt*xi/(alpha*dx**2)*A)
+    A_prime = sp.csr_matrix(M - dt*xi/(alpha*dx**2)*A)
 
     i = 0 # Indice qui augmente à chaque itération de la boucle sur N
     Tmax_t = np.zeros(t_array.size, dtype=np.double)
@@ -79,7 +90,7 @@ for N in Nar:
         
         b_prime = (M + dt*(1 - xi)/(alpha*dx**2)*A) @ u_n - dt/(alpha*dx**2)*b
 
-        u_nplus1 = sparse.linalg.spsolve(A_prime, b_prime)
+        u_nplus1 = sp.linalg.spsolve(A_prime, b_prime)
 
         Tmax_t[i] = u_n.max()
 
@@ -99,14 +110,28 @@ plt.show()
 # Identification du temps d'équilibrage du système
 tau_eq_indice = bisect.bisect(Tmax_t, Ta + 0.95*(Tmax_eq.max() - Ta))
 tau_eq = t_array[tau_eq_indice]
-print(tau_eq)
+print("Tmax_eq :",Tmax_eq)
+print("tau_eq : ", tau_eq)
 
 # Graphique question ii)
+fig,ax = plt.subplots()
 plt.plot(t_array,Tmax_t, color = 'red')
-plt.hlines(y= Ta + 0.95*(Tmax_eq.max() - Ta), xmin=0, xmax=1e7, color='blue', linestyle='--')
+plt.hlines(y= Ta + 0.95*(Tmax_eq.max() - Ta), xmin=-0.03e7, xmax=1e7, color='blue', linestyle='--')
+plt.xlabel(f"t [s]")
+plt.ylabel("$T_{max}$(t) [\u00b0C]")
+ax.tick_params(axis='x', which='both',direction="in", top=True, labeltop=False)
+ax.tick_params(axis='y', which='both',direction="in", right=True, labelright=False)
+ax.minorticks_on() 
+ax.tick_params(which='minor', length=4, color='gray')
+ax.xaxis.set_minor_locator(AutoMinorLocator(4))
+ax.yaxis.set_minor_locator(AutoMinorLocator(4))
+ax.grid(which='major', color='#CCCCCC', linestyle='-', linewidth=0.8)
+ax.grid(which='minor', color='#DDDDDD', linestyle=':', linewidth=0.5) 
+plt.xlim(-0.03e7,1e7)
 plt.show()
 
-#Err=np.abs(Tmax_eq[np.arange(0,Tmax.size,2)]-Tmax_eq[np.arange(1,Tmax_eq.size,2)])
+#Err=np.abs(Tmax_eq[np.arange(0,Tmax_eq.size,2)]-Tmax_eq[np.arange(1,Tmax_eq.size,2)])
+#print("Err : ", Err)
 #plt.figure(2)
 #plt.plot(L/Nar1,Err,'-or')
 #plt.xscale('log')
