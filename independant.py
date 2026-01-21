@@ -13,15 +13,12 @@ L=2; #[m] ; Épaisseur du mur
 
 k=1;h=10;
 # k=1;#[W/(m*K)]; La conductivité thermique de la brique
-# h=1; #[W/(m^2*K)]; Coefficient de transfert thermique pour l'interface plane entre l'air et solide.
+# h=10; #[W/(m^2*K)]; Coefficient de transfert thermique pour l'interface plane entre l'air et solide.
 
 # Condition convective (de Robin) à x=0 (face externe du mur): -k*dT/dx=h(Ta-T)
 Ta=-15; #[oC]
 c1 = -k; c2 = h; c3 = -h*Ta
 d1 = -k; d2 = -h; d3 = h*Ta
-
-
-
 
 #(N+1) nœuds dans la maille
 # Nmax=10000 pour 1G de mémoire
@@ -81,6 +78,7 @@ plt.ylabel('$T_{eq}$(x) [$^o$C]')
 plt.show()
 
 Err=np.abs(Tmax[np.arange(0,Tmax.size,2)]-Tmax[np.arange(1,Tmax.size,2)]);
+print("Erreur sur la température maximale à l'équilibre :",Err, "\u00b0C")
 plt.figure(2)
 plt.plot(L/Nar1,Err,'-or');
 plt.xscale('log')
@@ -100,4 +98,5 @@ plt.xlabel('N')
 plt.ylabel('temps [s]')
 
 Tmax_eq=Tmax[-2];
-print('N=',Nar1[-1],'Tmax=',Tmax_eq)
+#print('N=',Nar1[-1],'Tmax=',Tmax_eq)
+print("Température maximale à l'équilibre pour N =",Nar1[-1],":", Tmax_eq,"\u00b0C")
