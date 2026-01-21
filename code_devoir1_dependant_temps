@@ -22,16 +22,9 @@ d1 = -k; d2 = -h; d3 = h*Ta
 
 Nar = np.array([200]) # Nombre de noeuds du domaine
 
-# Pour évaluer l'erreur, on teste avec N et 2*N noeuds
-#Nar = np.zeros(2*Nar1.size,dtype=Nar1.dtype)
-#Nar[np.arange(0,2*Nar1.size-1,2)] = Nar1.copy()
-#Nar[np.arange(0,2*Nar1.size-1,2)+1] = 2*Nar1.copy()
-
 ci = -1; # Indice qui augmente à chaque itération de la boucle sur N
-#Err=np.zeros(Nar1.size,dtype=np.double) # Erreur de calcul sur la température maximale à l'équilibre
 Tmax_eq = np.zeros(Nar.size,dtype=np.double) # Température maximale à l'équilibre
 
-plt.figure(1)
 for N in Nar:
 
     print('Nombre de points sur la grille =',N)
@@ -99,19 +92,13 @@ for N in Nar:
         i = i + 1
     
     Tmax_eq[ci] = u_n.max()
-    plt.plot(x,u_n)
-    
-plt.axis([x[0], x[-1], Ta, Tmax_eq.max()])
-plt.title('Température (x)')
-plt.xlabel('x [m]')    
-plt.ylabel('$T_{eq}$(x) [$^o$C]')
-plt.show()
 
 # Identification du temps d'équilibrage du système
 tau_eq_indice = bisect.bisect(Tmax_t, Ta + 0.95*(Tmax_eq.max() - Ta))
 tau_eq = t_array[tau_eq_indice]
-print("Tmax_eq :",Tmax_eq)
-print("tau_eq : ", tau_eq)
+print("Température maximale au temps d'équilibrage :", Tmax_t[tau_eq_indice], "\u00b0C.")
+print("Température maximale à l'équilibre :",Tmax_eq, "\u00b0C.")
+print("Temps d'équilibrage : ", tau_eq, "secondes.")
 
 # Graphique question ii)
 fig,ax = plt.subplots()
@@ -129,14 +116,3 @@ ax.grid(which='major', color='#CCCCCC', linestyle='-', linewidth=0.8)
 ax.grid(which='minor', color='#DDDDDD', linestyle=':', linewidth=0.5) 
 plt.xlim(-0.03e7,1e7)
 plt.show()
-
-#Err=np.abs(Tmax_eq[np.arange(0,Tmax_eq.size,2)]-Tmax_eq[np.arange(1,Tmax_eq.size,2)])
-#print("Err : ", Err)
-#plt.figure(2)
-#plt.plot(L/Nar1,Err,'-or')
-#plt.xscale('log')
-#plt.yscale('log')
-#plt.title('Erreur (N)')
-#plt.xlabel('dx [m]')
-#plt.ylabel('Err(dx)=|$T_{max}$(dx)-$T_{max}$(dx/2)|')
-#plt.show()
