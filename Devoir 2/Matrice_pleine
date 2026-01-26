@@ -33,6 +33,7 @@ h=10 #W/(m^2*K); Coefficient de transfert thermique sur les surfaces extérieure
 ka=0.024
 
 fact_ar = np.array([1.0, 1.0/2, 1.0/4, 1.0/8, 1.0/16], dtype=np.double) # Facteurs multipliant le pas de discrétisation
+fact_ar = np.array([1.0, 1.0/2, 1.0/4], dtype=np.double) # Facteurs multipliant le pas de discrétisation
 #fact_ar = np.array([2.0, 1.0, 0.5], dtype=np.double) # Pour des essais rapides
 d_ar=np.zeros(fact_ar.size,dtype=np.double) # Array avec les pas de discrétisation en mètre
 tini_ar=np.zeros(fact_ar.size,dtype=np.double) # Temps d'initialisation de la matrice M, et de b et T
@@ -90,13 +91,15 @@ for fact in fact_ar:
     b=np.zeros((Nx*Ny,1),dtype=np.double) # Vecteur dans M*T = b
     T=np.zeros((Nx*Ny,1),dtype=np.double) # Vecteur dans M*T = b
     Tr=np.zeros((Ny,Nx),dtype=np.double) # T, mais sous forme de maillage Ny x Ny. 
+
+    Nm = int(np.rint(Lm/d+1))
     
     for i in np.arange(1,Ny+1,1):
         for j in np.arange(1,Nx+1,1):
             # remplir la ligne pl de la matrice M
             pl=(i-1)*Nx+j
             
-            if y == Lm : 
+            if i == Nm : 
                 # noeud sur la surface intérieure du mur en haut i)
                 pc=(i-3)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i-2,j)
                 pc=(i-2)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i-1,j)
@@ -104,7 +107,7 @@ for fact in fact_ar:
                 pc=(i)*Nx+j; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i+1,j)
                 pc=(i+1)*Nx+j; M[pl-1,pc-1]=1*ka; # contribution de noeud (i+2,j)
                 # Le coefficient b est nul à ce noeud.
-            elif x == (Lx-Lm) :
+            elif j == (Nx-Nm) :
                 # noeud sur la surface intérieure du mur à droite ii)
                 pc=(i-1)*Nx+j-2; M[pl-1,pc-1]=1*ka; # contribution de noeud (i,j-2)
                 pc=(i-1)*Nx+j-1; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i,j-1)
@@ -112,7 +115,7 @@ for fact in fact_ar:
                 pc=(i-1)*Nx+j+1; M[pl-1,pc-1]=-4*km; # contribution de noeud (i,j+1)
                 pc=(i-1)*Nx+j+2; M[pl-1,pc-1]=1*km; # contribution de noeud (i,j+2)
                 # Le coefficient b est nul à ce noeud. 
-            elif y == (Ly-Lm):
+            elif i == (Ny-Nm):
                 # noeud sur la surface intérieure du mur en bas iii)
                 pc=(i-3)*Nx+j; M[pl-1,pc-1]=1*ka; # contribution de noeud (i-2,j)
                 pc=(i-2)*Nx+j; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i-1,j)
@@ -120,7 +123,7 @@ for fact in fact_ar:
                 pc=(i)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i+1,j)
                 pc=(i+1)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i+2,j)
                 # Le coefficient b est nul à ce noeud.  
-            elif x == Lm :
+            elif j == Nm :
                 # noeud sur la surface intérieure du mur à gauche iv)
                 pc=(i-1)*Nx+j-2; M[pl-1,pc-1]=1*km; # contribution de noeud (i,j-2)
                 pc=(i-1)*Nx+j-1; M[pl-1,pc-1]=-4*km; # contribution de noeud (i,j-1)
@@ -174,10 +177,10 @@ for fact in fact_ar:
     
     Tm_ar[ci]=Tr[int(np.rint(Ly/d/2+1))-1,int(np.rint(Lx/d/2+1))-1] # température au milieu du domaine de calcul
 
-# Enregistrement des données importantes pour le rapport:
-np.savetxt("pleine_Tm.csv", Tm_ar, delimiter=",")
-np.savetxt("pleine_colormap.csv", Tr, delimiter=",")
-np.savetxt("pleine_mem.csv", mem_ar, delimiter=",")
+    # Enregistrement des données importantes pour le rapport:
+    np.savetxt("pleine_Tm.csv", Tm_ar, delimiter=",")
+    np.savetxt("pleine_colormap.csv", Tr, delimiter=",")
+    np.savetxt("pleine_mem.csv", mem_ar, delimiter=",")
 
 plt.figure(1)
 plt.pcolor(np.arange(0,Nx,1)*d,np.arange(0,Ny,1)*d,S)
