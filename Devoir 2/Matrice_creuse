@@ -100,7 +100,7 @@ for fact in fact_ar:
             # remplir la ligne pl de la matrice M
             pl=(i-1)*Nx+j
             
-            if i == Nm : 
+            if i == Nm + 1: 
                 # noeud sur la surface intérieure du mur en haut i)
                 pc=(i-3)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i-2,j)
                 pc=(i-2)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i-1,j)
@@ -124,7 +124,7 @@ for fact in fact_ar:
                 pc=(i)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i+1,j)
                 pc=(i+1)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i+2,j)
                 # Le coefficient b est nul à ce noeud.  
-            elif j == Nm :
+            elif j == Nm + 1:
                 # noeud sur la surface intérieure du mur à gauche iv)
                 pc=(i-1)*Nx+j-2; M[pl-1,pc-1]=1*km; # contribution de noeud (i,j-2)
                 pc=(i-1)*Nx+j-1; M[pl-1,pc-1]=-4*km; # contribution de noeud (i,j-1)
