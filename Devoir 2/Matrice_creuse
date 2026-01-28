@@ -235,17 +235,17 @@ def estimate_coef(x, y):
 
     return (b_0, b_1)
 
-(loga,p) = estimate_coef(np.log(d_ar[::-1]), np.log(mem_ar[::-1]))
-
-print("Valeur du coefficient A_mem :", np.exp(loga))
-print("Valeur de l'exposant p_mem :", p)
-
 plt.figure(4)
 plt.loglog(d_ar[::-1],mem_ar[::-1]/1024.0**3,'-o')
 plt.xlabel(r'Pas de discrétisation $\delta$ [m]', fontsize = 12)
 plt.ylabel('Mémoire [Gb]', fontsize = 12)
 plt.tight_layout()
 plt.show()
+
+(loga,p) = estimate_coef(np.log(d_ar[::-1]), np.log(mem_ar[::-1]))
+
+print("Valeur du coefficient A_mem :", np.exp(loga))
+print("Valeur de l'exposant p_mem :", p)
 
 plt.figure(5)
 Err_ar=abs(Tm_ar[:-1:]-Tm_ar[1::])
@@ -255,6 +255,11 @@ plt.title('Erreur de calcul')
 plt.xlabel('Pas $d_x=d_y$ [m]')
 plt.ylabel('Err [$^o$C]')
 plt.show()
+
+(loga,p) = estimate_coef(np.log(d_Err_ar[::-1]), np.log(Err_ar[::-1]))
+
+print("Valeur du coefficient A_err :", np.exp(loga))
+print("Valeur de l'exposant p_err :", p)
 
 plt.figure(6)
 plt.loglog(d_ar[::-1],tini_ar[::-1],'-bo',d_ar[::-1],tinv_ar[::-1],'-r*')
