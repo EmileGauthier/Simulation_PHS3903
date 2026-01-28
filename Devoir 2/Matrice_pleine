@@ -182,6 +182,24 @@ for fact in fact_ar:
     np.savetxt("pleine_colormap.csv", Tr, delimiter=",")
     np.savetxt("pleine_mem.csv", mem_ar, delimiter=",")
 
+def estimate_coef(x, y):
+    # number of observations/points
+    n = np.size(x)
+
+    # mean of x and y vector
+    m_x = np.mean(x)
+    m_y = np.mean(y)
+
+    # calculating cross-deviation and deviation about x
+    SS_xy = np.sum(y*x) - n*m_y*m_x
+    SS_xx = np.sum(x*x) - n*m_x*m_x
+
+    # calculating regression coefficients
+    b_1 = SS_xy / SS_xx
+    b_0 = m_y - b_1*m_x
+
+    return (b_0, b_1)
+
 plt.figure(1)
 plt.pcolor(np.arange(0,Nx,1)*d,np.arange(0,Ny,1)*d,S)
 plt.colorbar(mappable=None, cax=None, ax=None)
@@ -207,24 +225,31 @@ plt.ylabel('y [m]')
 plt.show()
 
 plt.figure(4)
-plt.loglog(d_ar[::-1],mem_ar[::-1]/1024.0**3,'-o')
-plt.title('Exigences de mémoire')
-plt.xlabel('Pas $d_x=d_y$ [m]')
+plt.loglog(d_ar[::-1],mem_ar[::-1]/1024.0**3,'-o') 
+plt.xlabel(r'Pas de discrétisation $\delta$ [m]')
 plt.ylabel('Mémoire [Gb]')
 plt.show()
+
+(loga,p) = estimate_coef(np.log(d_ar[::-1]), np.log(mem_ar[::-1]))
+
+print("Valeur du coefficient A_mem :", np.exp(loga))
+print("Valeur de l'exposant p_mem :", p)
+
 
 plt.figure(5)
 Err_ar=abs(Tm_ar[:-1:]-Tm_ar[1::])
 d_Err_ar=d_ar[1::]; # Definiton d'erreur Err(delta)=|Tm(2*delta)-Tm(delta)|
 plt.loglog(d_Err_ar[::-1],Err_ar[::-1],'-o')
-plt.title('Erreur de calcul')
-plt.xlabel('Pas $d_x=d_y$ [m]')
+plt.xlabel(r'Pas de discrétisation $\delta$ [m]')
 plt.ylabel('Err [$^o$C]')
 plt.show()
 
-print("Temps d'initialisation :", tini_ar)
-print("Temps d'inversion :", tinv_ar)
-print("Temps total :", tini_ar + tinv_ar)
+d_Err_ar = d_Err_ar[1:]
+Err_ar = Err_ar[1:]
+(loga,p) = estimate_coef(np.log(d_Err_ar[::-1]), np.log(Err_ar[::-1]))
+
+print("Valeur du coefficient A_err :", np.exp(loga))
+print("Valeur de l'exposant p_err :", p)
 
 plt.figure(6)
 plt.loglog(d_ar[::-1],tini_ar[::-1],'-bo',d_ar[::-1],tinv_ar[::-1],'-r*')
