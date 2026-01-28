@@ -100,7 +100,7 @@ for fact in fact_ar:
             # remplir la ligne pl de la matrice M
             pl=(i-1)*Nx+j
             
-            if i == Nm + 1 and j > Nm and j < Nx - Nm: 
+            if (i-1)*d == Lm and (j-1)*d >= Lm and (j-1)*d <= Lx - Lm:
                 # noeud sur la surface intérieure du mur en haut i)
                 pc=(i-3)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i-2,j)
                 pc=(i-2)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i-1,j)
@@ -108,7 +108,7 @@ for fact in fact_ar:
                 pc=(i)*Nx+j; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i+1,j)
                 pc=(i+1)*Nx+j; M[pl-1,pc-1]=1*ka; # contribution de noeud (i+2,j)
                 # Le coefficient b est nul à ce noeud.
-            elif j == (Nx-Nm) and i > Nm and i < Ny - Nm:
+            elif (j-1)*d == Lx - Lm and (i-1)*d >= Lm and (i-1)*d <= Ly - Lm:
                 # noeud sur la surface intérieure du mur à droite ii)
                 pc=(i-1)*Nx+j-2; M[pl-1,pc-1]=1*ka; # contribution de noeud (i,j-2)
                 pc=(i-1)*Nx+j-1; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i,j-1)
@@ -116,7 +116,7 @@ for fact in fact_ar:
                 pc=(i-1)*Nx+j+1; M[pl-1,pc-1]=-4*km; # contribution de noeud (i,j+1)
                 pc=(i-1)*Nx+j+2; M[pl-1,pc-1]=1*km; # contribution de noeud (i,j+2)
                 # Le coefficient b est nul à ce noeud. 
-            elif i == (Ny-Nm) and j > Nm and j < Nx - Nm:
+            elif (i-1)*d == Ly - Lm and (j-1)*d >= Lm and (j-1)*d <= Lx - Lm:
                 # noeud sur la surface intérieure du mur en bas iii)
                 pc=(i-3)*Nx+j; M[pl-1,pc-1]=1*ka; # contribution de noeud (i-2,j)
                 pc=(i-2)*Nx+j; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i-1,j)
@@ -124,14 +124,14 @@ for fact in fact_ar:
                 pc=(i)*Nx+j; M[pl-1,pc-1]=-4*km; # contribution de noeud (i+1,j)
                 pc=(i+1)*Nx+j; M[pl-1,pc-1]=1*km; # contribution de noeud (i+2,j)
                 # Le coefficient b est nul à ce noeud.  
-            elif j == Nm + 1  and i > Nm and i < Ny - Nm:
+            elif (j-1)*d == Lm and (i-1)*d >= Lm and (i-1)*d <= Ly - Lm:
                 # noeud sur la surface intérieure du mur à gauche iv)
                 pc=(i-1)*Nx+j-2; M[pl-1,pc-1]=1*km; # contribution de noeud (i,j-2)
                 pc=(i-1)*Nx+j-1; M[pl-1,pc-1]=-4*km; # contribution de noeud (i,j-1)
                 pc=pl; M[pl-1,pc-1]=3*(km+ka); # contribution de noeud (i,j)
                 pc=(i-1)*Nx+j+1; M[pl-1,pc-1]=-4*ka; # contribution de noeud (i,j+1)
                 pc=(i-1)*Nx+j+2; M[pl-1,pc-1]=1*ka; # contribution de noeud (i,j+2)
-                # Le coefficient b est nul à ce noeud. 
+                # Le coefficient b est nul à ce noeud.
             elif (((i>1) and (i<Ny)) and ((j>1) and (j<Nx))):
                 # noeud qui est strictement à l'intérieur de la cellule de simulation
                 pc=pl;M[pl-1,pc-1]=-4; # contribution de noeud (i,j)
