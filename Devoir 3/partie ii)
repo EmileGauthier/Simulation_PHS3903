@@ -1,0 +1,131 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Équation différentielle: d^2 u/dx^2=g(x) sur x=(a,b)
+# Conditions aux limites générales:
+# x=a: c1*du/dx+c2*u+c3=-si*T^4
+# x=b: d1*du/dx+d2*u+d3=0
+
+# Équation de transfert de chaleur d^2 T/dx^2=-S(x)/k sur x=(0,L)
+# dans un mur d'isolation thermique
+L=0.3 #[m] ; Épaisseur du mur
+
+k=0.85 #[W/(m*K)]; La conductivité thermique de la brique
+si=5.67e-8 #constante de Stefan-Boltzmann
+h = 20 # Coefficient de tranfert thermique
+
+To=293 #oK
+
+# Condition radiative à x=0 (face externe du mur): -k*dT/dx=-si*(T^4-To^4)
+# !!! Condition radiative est implementée SEULEMENT sur la face externe du mur !!!
+c1=-k; c2=h; c3=-h*To - si*To**4
+# Condition de Neumann à x=L (face interne du mur): dT/dx=0 - flux net de chaleur est 0
+d1=-k; d2=-h; d3=h*To + si*To**4
+
+#(N+1) nœuds dans la maille
+# Nmax=10000 pour 1G de mémoire
+
+#Nar1=np.array([100]); #dx=3mm
+#Nar1= np.concatenate((np.arange(2, 11, 1), np.arange(20, 110, 10), np.arange(200, 1100, 100), np.arange(2000, 6000, 1000))); # Matrice pleine
+#Nar=np.zeros(2*Nar1.size,dtype=Nar1.dtype);
+#Nar[np.arange(0,2*Nar1.size-1,2)]=Nar1.copy();
+#Nar[np.arange(0,2*Nar1.size-1,2)+1]=2*Nar1.copy();
+
+N=100
+print('Nombre de points sur la grille=', N)
+dx = L/N  # Pas de discrétisation
+x = np.linspace(0, L, N+1)
+
+S=np.zeros(N+1,dtype=np.double) # Source de chaleur aux noeuds du maillage
+A = np.zeros((N+1, N+1), dtype=np.double) # Matrice des coefficients
+J = np.zeros((N+1, N+1), dtype=np.double) # Matrice jacobienne
+b = np.zeros(N+1, dtype=np.double) # Terme source et non linéaire
+dT = np.zeros(N+1, dtype=np.double) # Perturbation
+F = np.zeros(N+1, dtype=np.double) # Système d'équation non-linéaire : F = 0
+
+stop_biss=[]
+
+# matrice pleine
+A=np.diag(-2*np.ones(N+1),0)+np.diag(np.ones(N),-1)+np.diag(np.ones(N),1)
+
+A[0,0]=2*c2*dx-3*c1;A[0,1]=4*c1;A[0,2]=-c1
+A[N,N]=3*d1+2*d2*dx;A[N,N-1]=-4*d1;A[N,N-2]=d1
+
+qmin = 10**5
+qmax = 10**7
+qmax_init = qmax
+q_ar = [] # Source de chaleur
+q_ar.append((qmax+qmin)/2)
+Tm_max = 2250
+
+cj=-1;flag_biss=1;tol_biss=1e-12
+
+while flag_biss:
+    cj = cj+1
+
+    # Source volumique de chaleur q[W/m^3] d'épaisseur dL
+    # La source est intégrée dans la partie intérieure du mur
+    dL = 0.05
+    S = q_ar[cj]*np.exp(-((x-L)/dL)**2)
+
+    ci=-1;flag_newton=1;tol_newton=1e-12;stop_newton=[];Tmax_newton=[]
+    T = To*np.ones(N+1, dtype=np.double)
+    
+    while flag_newton:    
+        ci = ci+1
+
+        b=S/k*dx**2; b[0]=T[0]**4*2*dx*si+2*c3*dx; b[N]=-T[N]**4*2*dx*si+2*d3*dx
+        
+        F=A@T+b
+
+        stop_newton.append(sum(np.abs(F))/(N+1))
+        if (stop_newton[ci]<tol_newton):
+            flag_newton=0
+            
+        J=A.copy();J[0,0]=A[0,0]+T[0]**3*8*dx*si;J[N,N]=A[N,N]-T[N]**3*8*dx*si
+        dT=-np.linalg.solve(J,F)
+        T=T+dT
+
+    if T.max() > Tm_max:
+        qmax = q_ar[-1]
+    else:
+        qmin = q_ar[-1]
+
+    q_ar.append((qmax + qmin)/2)
+
+    if cj == 0:
+        stop_biss.append((qmax_init-q_ar[0])/qmax_init)
+    else:
+        stop_biss.append(np.abs(q_ar[cj] - q_ar[cj-1])/q_ar[cj-1])
+
+    if (stop_biss[cj] < tol_biss):
+        flag_biss=0
+
+Tmax=T.max()
+print('q=',q_ar[-2],'Tmax=',Tmax)    
+print("Err q_max :", np.abs(q_ar[-2] - q_ar[-3]))
+print("Température à x = 0 :", T[0])
+print("Température à x = L :", T[-1])
+
+plt.figure(1)  
+plt.plot(x,T)
+plt.axis([x[0], x[-1], To, Tmax])
+plt.xlabel('x [m]', fontsize = 12)    
+plt.ylabel('$T_{eq}$(x) [K]', fontsize = 12)
+plt.show()
+
+Err_newton = stop_newton
+plt.figure(2)
+plt.plot(np.arange(1, ci + 2), Err_newton,'-o')
+plt.yscale('log')
+plt.xlabel('Itérations (N)', fontsize = 12)
+plt.ylabel('Critère de convergence', fontsize = 12)
+plt.show()
+
+Err_biss= stop_biss
+plt.figure(3)
+plt.plot(np.arange(1, cj + 2),Err_biss,'-o')
+plt.yscale('log')
+plt.xlabel('Itérations (N)', fontsize = 12)
+plt.ylabel(r'Erreur relative sur ($q_{max}$)', fontsize = 12)
+plt.show()
