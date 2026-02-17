@@ -1,0 +1,77 @@
+# PHS3903 - Projet de simulation
+# Mini-devoir 5
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import interpolate
+from scipy import stats
+
+# Paramètres physiques du problème
+g = 9.81     # Champ gravitationnel (m²/s)
+m = 1.000    # Masse du pendule (kg)
+L = 1.000    # Longueur du câble (m)
+beta = 0.1  # Constante d'amortissement (1/s)
+ftheta = []
+# Conditions initiales
+theta0 =   np.pi/6       # Position initiale (rad)
+omega0 = 5         # Vitesse inititale (rad/s)
+
+# Paramètres généraux de simulation
+deltat = 0.02          # pas de temps (s)
+tf = 10             # Temps final (s)
+#dt0 = 0.0056       # Pas de temps le plus élevé (s)
+#K = 5
+
+#dt_val = [0.02]
+dt_val = [deltat*1,  deltat*1/2, deltat*1/4,deltat* 1/8, deltat*1/16,  deltat*1/32]     # Vecteur des pas de temps pour chaque simulation
+#thetaf = np.zeros(K) # Vecteur des positions finales pour chaque simulation
+pas = [f'dt = {dt}' for dt in dt_val] #pour nommer chaque simulation
+               
+plt.figure(figsize=(10,6))
+
+for dt, pas in zip(dt_val, pas):
+
+    #for k in range(0,K):
+    # Paramètres spécifiques de la simulation
+       # dt = dt_val[k]               # Pas de temps de la simulation
+    N = int(tf / dt)  # Nombre de points (Nombre d'itérations (conseil : s'assurer que dt soit un multiple entier de tf))
+
+    # Initialisation
+    t = np.linspace(0, tf, N+1)  # Vecteur des valeurs t_n
+    theta = np.zeros(N + 1)  # Vecteur des valeurs theta_n
+    theta[0] = theta0 
+    theta[1] = ( - (g/(2*L)) * dt**2 * np.sin(theta[0])+ theta[0]+ omega0*dt*(1 - beta*dt/2))
+
+    # Exécution
+    for n in range(1, N):
+        theta[n+1] = (- (2*g/L)*dt**2*np.sin(theta[n])+ 4*theta[n]- theta[n-1]*(2 - beta*dt)) / (2 + beta*dt)
+    ftheta.append(theta[-1])  # liste de positions au temps final tf
+    if dt == deltat:
+        plt.plot(t, theta, label=pas) 
+    print(ftheta)
+
+
+
+plt.xlabel('Temps [s]', fontsize = 12)
+plt.ylabel('Angle [rad]', fontsize = 12)
+plt.show()
+
+
+plt.figure(figsize=(10,6))
+
+abs_diff = [abs(ftheta[i] - ftheta[i+1]) for i in range(len(ftheta)-1)]
+dt_mid = dt_val[:-1]  # pour la valeur plus grande de dt
+plt.scatter(dt_mid, abs_diff, marker = 'D', s = 50, color = "orange", label = "Résultats numériques")
+plt.legend()
+plt.xlabel('Pas de temps [s]', fontsize = 12)
+plt.ylabel('Différence absolue de position finale [rad]', fontsize = 12)
+plt.xscale('log')
+plt.yscale('log')
+
+slope, intercept, r_value, p_value, std_err = stats.linregress(np.log(dt_mid), np.log(abs_diff))
+plt.plot(dt_mid, np.exp(intercept) * dt_mid**slope, '--', label=f'Régression linéaire')
+print(slope)
+plt.legend(fontsize = 12)
+plt.grid(True)
+plt.show()
+
