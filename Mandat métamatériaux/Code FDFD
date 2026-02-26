@@ -1,0 +1,88 @@
+clear; close all; clc; 
+addpath('../class', '../flux', '../helper', '../solver', '../vis'); 
+
+%% Instantiate solver
+fdfd = fdfd_solve();
+
+%% ==============================
+%  Propriétés de la simulation
+% ===============================
+fdfd.L0 = 1e-6;              % Échelle : micron
+fdfd.wvlen0 = 1.508465;      % Longueur d'onde
+fdfd.xrange = [0 6];         
+fdfd.yrange = [0 6];         
+fdfd.N = [300 300];          
+
+fdfd.Npml = [15 15];         
+fdfd.pol = 'TM';             
+
+%% ==============================
+%  Matériau hôte (cube)
+% ===============================
+eps_host = 4;     % Permittivité du cube principal
+
+fdfd.add_eps('rect', [0, 0, 6, 4], eps_host);
+
+%% ==============================
+%  Inclusions circulaires
+% ===============================
+eps_incl = 12;      % Permittivité des inclusions
+r = 0.1;           % Rayon des inclusions
+Nx_inc = 20;         % Nombre selon x
+Ny_inc = 13;         % Nombre selon y
+period = 0.3;       % Espacement centre-à-centre
+
+% Centre de la matrice
+x_center = 3;
+y_center = 2;   % Position verticale du réseau (ajuste si voulu)
+
+% Coordonnées du premier élément (coin bas gauche)
+x0 = x_center - (Nx_inc-1)/2 * period;
+y0 = y_center - (Ny_inc-1)/2 * period;
+
+for ix = 0:Nx_inc-1
+    for iy = 0:Ny_inc-1
+        
+        xc = x0 + ix * period;
+        yc = y0 + iy * period;
+        
+        fdfd.add_eps('circ', [xc yc r], eps_incl);
+        
+    end
+end
+
+%% ==============================
+%  Setup permittivité
+% ===============================
+fdfd.eps_setup();
+
+%% ==============================
+%  Source ponctuelle au-dessus du cube
+% ===============================
+% Position légèrement au-dessus du domaine matériel
+src_x = 3;
+src_y = 5;   % bien dans l'air
+
+fdfd.source_setup('point', [src_x, src_y], 0.1);
+
+%% ==============================
+%  Visualisation structure
+% ===============================
+figure;
+fdfd.vis_structure();
+
+%% ==============================
+%  Simulation FDFD
+% ===============================
+fdfd.simulate();
+
+%% ==============================
+%  Visualisation champ
+% ===============================
+figure;
+fdfd.visabs(fdfd.Ez);
+title('|Ez| - Réponse à une source ponctuelle');
+
+%% Animation
+figure;
+fdfd.moviereal(fdfd.Ez);
