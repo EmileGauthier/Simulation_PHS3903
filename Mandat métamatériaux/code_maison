@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
+from scipy.sparse import diags
 
 ### ÉTAPE D'INITIALISATION
 
@@ -33,35 +34,35 @@ Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les 
 
 ### Conditions initiales
 
-Hz = np.zeros((Ny,Nx),dtype=np.complex128)
-Ex = np.zeros((Ny,Nx),dtype=np.complex128)
-Ey = np.zeros((Ny,Nx),dtype=np.complex128)
+hz = np.zeros((Nx*Ny,1),dtype=np.complex128)
+ex = np.zeros((Nx*Ny,1),dtype=np.complex128)
+ey = np.zeros((Nx*Ny,1),dtype=np.complex128)
 
 ### Distribution de la permittivité et de la perméabilité
-
-eps_mat = np.zeros((Ny,Nx),dtype=np.complex128)
-mu_mat = np.zeros((Ny,Nx),dtype=np.complex128)
+eps_mat_inv = sp.sparse.lil_matrix((Nx*Ny,Nx*Ny), dtype=np.complex128) 
+mu_mat_inv = sp.sparse.lil_matrix((Nx*Ny,Nx*Ny), dtype=np.complex128) 
 
 for i in np.arange(1,Ny+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
     y=(i-1)*dy
     for j in np.arange(1,Nx+1,1): #j=1,..,Nx - numérotation des nœuds sur un maillage physique
         x=(j-1)*dx
+        pl = (i-1)*Nx + j
 
-        mu_mat[i-1,j-1] = mu0
+        mu_mat_inv[pl-1,pl-1] = 1/mu0
         
         if y <= L_eau:
             # Le noeud se trouve dans l'eau
-            eps_mat[i-1,j-1] = eps_eau
+            eps_mat_inv[pl-1,pl-1] = 1/eps_eau
         elif y >= L_eau and y <= (L_eau + L_si):
             # Le noeud se trouve dans la couche de silicium
-            eps_mat[i-1,j-1] = eps_si
+            eps_mat_inv[pl-1,pl-1] = 1/eps_si
         else:
             # Le noeud se trouve dans la couche d'or
-            eps_mat[i-1,j-1] = eps_or
+            eps_mat_inv[pl-1,pl-1] = 1/eps_or
 
 # Visualisation permittivité
-plt.imshow(np.real(eps_mat))
-plt.show()
+#plt.spy(np.real(eps_mat_inv),markersize=2)
+#plt.show()
 
 # Implémentation de la source
 
@@ -74,6 +75,7 @@ i_source = int(np.rint(y_source/dy + 1)) # Nombre de noeuds dans la direction y 
 jx = np.zeros((Nx*Ny,1),dtype=np.double)
 jy = np.zeros((Nx*Ny,1),dtype=np.double)
 jx[(i_source-1)*Nx+(j_source-1)] = 1
+jy[(i_source-1)*Nx+(j_source-1)] = 0
 
 ### Formatage des matrices de dérivées (À MODIFIER DANS LE CAS DES PML)
 
@@ -86,21 +88,37 @@ for i in np.arange(1,Ny+1,1):
         pl = (i-1)*Nx + j
 
         if i == Ny:
-            pc = pl; Dy[pl-1,pc-1] = -1
-            pc = j; Dy[pl-1,pc-1] = 1
+            pc = pl; Dy[pl-1,pc-1] = -1/dy
+            pc = j; Dy[pl-1,pc-1] = 1/dy
         elif j == Nx:
-            pc = pl; Dx[pl-1,pc-1] = -1
-            pc = (i-1)*Nx + 1; Dx[pl-1,pc-1] = 1
+            pc = pl; Dx[pl-1,pc-1] = -1/dx
+            pc = (i-1)*Nx + 1; Dx[pl-1,pc-1] = 1/dx
         else:
-            pc = pl; Dy[pl-1,pc-1] = -1; Dx[pl-1,pc-1] = -1
-            pc = (i)*Nx+j; Dy[pl-1,pc-1] = 1
-            pc = (i-1)*Nx+(j+1); Dx[pl-1,pc-1] = 1
+            pc = pl; Dy[pl-1,pc-1] = -1/dy; Dx[pl-1,pc-1] = -1/dx
+            pc = (i)*Nx+j; Dy[pl-1,pc-1] = 1/dy
+            pc = (i-1)*Nx+(j+1); Dx[pl-1,pc-1] = 1/dx
 
 # Visualisation Dx
-plt.spy(Dx,markersize=2)
-plt.show()
+#plt.spy(Dx,markersize=2)
+#plt.show()
 
 ### ÉTAPE DE RÉSOLUTION NUMÉRIQUE
 
+# Formatage de matrices (nxm)x(nxm) pour la résolution numérique
+
+A = Dx*eps_mat_inv*Dx + Dy*eps_mat_inv*Dy + (omega_src**2)*mu_mat_inv
+b = Dy*eps_mat_inv*jx - Dx*eps_mat_inv*jy
+
+lu=sp.sparse.linalg.splu(sp.sparse.lil_matrix.tocsc(A))
+hz=lu.solve(b)
+
+ex = (-1/(1j*omega_src))*eps_mat_inv*(-Dy*hz + jx)
+ey = (-1/(1j*omega_src))*eps_mat_inv*(Dx*hz + jy)
 
 
+Hz = hz.reshape((Ny, Nx))
+Ex = ex.reshape((Ny, Nx))
+Ey = ey.reshape((Ny, Nx))
+
+plt.imshow(np.real(Ex),cmap='viridis')
+plt.show()
