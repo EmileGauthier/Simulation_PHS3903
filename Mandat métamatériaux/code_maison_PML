@@ -1,0 +1,123 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy as sp
+from scipy.sparse import diags
+
+### ÉTAPE D'INITIALISATION
+
+## Paramètres
+
+# Constantes physiques 
+mu0 = 1.2567e-6 # Perméabilité du vide (H/m)
+eps0 = 8.8542e-12 # Permittivité du vide (F/m)
+c = 2.9979e8 # Vitesse de la lumière dans le vide (m/s)
+
+# Paramètres physiques
+wavelength_src = 568e-9 # Pic d'émission du Alexa Fluor 555 (m)
+omega_src = 2*np.pi*c/wavelength_src
+eps_eau = eps0 * 1.78 # Permittivité relative de l'eau à 568 nm
+eps_or = eps0 * (-14.07 + 0.32j) # Permittivité relative de l'or à 568 nm
+eps_si = eps0 * (16.24 + 0.26j) # Permittivité relative du silicium à 568 nm
+
+# Paramètres géométriques
+L_eau = 0.5e-6 # Épaisseur de la couche d'eau (m)
+L_si = 1.0e-6 # Épaisseur de la couche de silicium (m)
+L_or = 0.5e-6 # Épaisseur de la couche d'or (m)
+Lx = 1.0e-6 # Largeur du domaine de simulation en x (sans PML) (m)
+Ly = L_eau + L_si + L_or # Largeur du domaine de simulation en y (sans PML) (m)
+
+dx = 0.01e-6 # Pas de discrétisation dans la direction x (m)
+dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
+
+Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
+Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
+N_PML = int(0.1*Nx) # Nombre de noeuds pour les PML
+Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
+Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
+Nx_tot = Nx + 2*N_PML
+Ny_tot = Ny + 2*N_PML
+
+### Distribution de la permittivité et de la perméabilité
+eps_mat_inv = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+mu_mat_inv = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+
+for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
+    y=(i-1)*dy
+    for j in np.arange(1,Nx_tot+1,1): #j=1,...,Nx - numérotation des nœuds sur un maillage physique
+        x=(j-1)*dx
+        pl = (i-1)*Nx_tot + j
+
+        mu_mat_inv[pl-1,pl-1] = 1/mu0
+        
+        if y - Ly_PML <= L_eau:
+            # Le noeud se trouve dans l'eau
+            eps_mat_inv[pl-1,pl-1] = 1/eps_eau
+        elif y - Ly_PML >= L_eau and y - Ly_PML <= (L_eau + L_si):
+            # Le noeud se trouve dans la couche de silicium
+            eps_mat_inv[pl-1,pl-1] = 1/eps_si
+        else:
+            # Le noeud se trouve dans la couche d'or
+            eps_mat_inv[pl-1,pl-1] = 1/eps_or
+
+        
+
+# Visualisation permittivité
+#plt.spy(np.real(eps_mat_inv),markersize=2)
+#plt.show()
+
+# Implémentation de la source
+
+x_source = Lx/2
+y_source = L_eau/2
+
+j_source = int(np.rint(x_source/dx + 1)) + N_PML
+i_source = int(np.rint(y_source/dy + 1)) + N_PML
+
+jx = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+jy = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+jx[(i_source-1)*Nx_tot+(j_source-1)] = 1
+
+### Formatage des matrices de dérivées
+
+Dx = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double) 
+Dy = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double) 
+
+for i in np.arange(1,Ny_tot+1,1):
+    for j in np.arange(1,Nx_tot+1,1):
+        # remplir la ligne pl de la matrice M
+        pl = (i-1)*Nx_tot + j
+
+        if i == Ny_tot:
+            pc = pl; Dy[pl-1,pc-1] = -1/dy
+            pc = j; Dy[pl-1,pc-1] = 1/dy
+        elif j == Nx_tot:
+            pc = pl; Dx[pl-1,pc-1] = -1/dx
+            pc = (i-1)*Nx_tot + 1; Dx[pl-1,pc-1] = 1/dx
+        else:
+            pc = pl; Dy[pl-1,pc-1] = -1/dy; Dx[pl-1,pc-1] = -1/dx
+            pc = (i)*Nx_tot+j; Dy[pl-1,pc-1] = 1/dy
+            pc = (i-1)*Nx_tot+(j+1); Dx[pl-1,pc-1] = 1/dx
+
+# Visualisation Dx
+#plt.spy(Dx,markersize=2)
+#plt.show()
+
+### ÉTAPE DE RÉSOLUTION NUMÉRIQUE
+
+# Formatage de matrices (nxm)x(nxm) pour la résolution numérique
+
+A = Dx*eps_mat_inv*Dx + Dy*eps_mat_inv*Dy + (omega_src**2)*mu_mat_inv
+b = Dy*eps_mat_inv*jx - Dx*eps_mat_inv*jy
+
+lu=sp.sparse.linalg.splu(sp.sparse.lil_matrix.tocsc(A))
+hz=lu.solve(b)
+
+ex = (-1/(1j*omega_src))*eps_mat_inv*(-Dy*hz + jx)
+ey = (-1/(1j*omega_src))*eps_mat_inv*(Dx*hz + jy)
+
+Hz = hz.reshape((Ny_tot, Nx_tot))
+Ex = ex.reshape((Ny_tot, Nx_tot))
+Ey = ey.reshape((Ny_tot, Nx_tot))
+
+plt.imshow(np.real(Ex),cmap='viridis')
+plt.show()
