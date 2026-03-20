@@ -31,7 +31,7 @@ dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
 
 Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
 Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
-N_PML = int(0.5*Ny) # Nombre de noeuds pour les PML
+N_PML = int(0.3*Ny) # Nombre de noeuds pour les PML
 Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
 Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
 Nx_tot = Nx + 2*N_PML
@@ -61,7 +61,7 @@ def distance_from_frontier(i,j,Ny,Nx,N_PML):
 
 n = 1
 R_0 = 6.14e-6
-sigma_max = -n * eps0*c*np.log(R_0)/(2*Lx_PML)
+sigma_max = 1e6*-n * eps0*c*np.log(R_0)/(2*Lx_PML)
 
 for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
     y=(i-1)*dy
@@ -122,10 +122,6 @@ plt.show()
 mu_mat_inv = mu_mat.power(-1)
 eps_mat_inv = eps_mat.power(-1)
 
-# Visualisation permittivité
-#plt.spy(np.real(eps_mat_inv),markersize=2)
-#plt.show()
-
 # Implémentation de la source
 
 x_source = Lx/2
@@ -180,5 +176,5 @@ Hz = hz.reshape((Ny_tot, Nx_tot))
 Ex = ex.reshape((Ny_tot, Nx_tot))
 Ey = ey.reshape((Ny_tot, Nx_tot))
 
-plt.imshow(np.real(Ex),cmap='viridis')
+plt.imshow(np.real(Ey),cmap='viridis')
 plt.show()
