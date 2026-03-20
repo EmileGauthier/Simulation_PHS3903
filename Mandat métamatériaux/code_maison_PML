@@ -31,7 +31,7 @@ dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
 
 Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
 Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
-N_PML = int(0.1*Nx) # Nombre de noeuds pour les PML
+N_PML = int(0.5*Ny) # Nombre de noeuds pour les PML
 Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
 Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
 Nx_tot = Nx + 2*N_PML
@@ -41,11 +41,35 @@ Ny_tot = Ny + 2*N_PML
 eps_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
 mu_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
 
+def distance_from_frontier(i,j,Ny,Nx,N_PML):
+    dist_x = 0
+    dist_y = 0
+    in_PML = False
+    if i <= N_PML:
+        in_PML = True
+        dist_y = N_PML - i
+    if i >= Ny + N_PML:
+        in_PML = True
+        dist_y = i - N_PML - Ny
+    if j <= N_PML:
+        in_PML = True
+        dist_x = N_PML-j
+    if j >= Nx + N_PML:
+        in_PML = True
+        dist_x = j - Nx - N_PML
+    return dist_x, dist_y, in_PML
+
+n = 1
+R_0 = 6.14e-6
+sigma_max = -n * eps0*c*np.log(R_0)/(2*Lx_PML)
+
 for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
     y=(i-1)*dy
     for j in np.arange(1,Nx_tot+1,1): #j=1,...,Nx - numérotation des nœuds sur un maillage physique
         x=(j-1)*dx
         pl = (i-1)*Nx_tot + j
+
+        # Sans PML
 
         mu_mat[pl-1,pl-1] = mu0
         
@@ -58,6 +82,42 @@ for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un m
         else:
             # Le noeud se trouve dans la couche d'or
             eps_mat[pl-1,pl-1] = eps_or
+
+        # Ajout des PML
+
+        dist_x, dist_y, in_PML = distance_from_frontier(i,j,Ny,Nx,N_PML)
+
+        if in_PML == True:
+            sigma_e = sigma_max * ((dist_x/N_PML)**n + (dist_y/N_PML)**n)
+            sigma_m = mu0 * sigma_e / eps0
+
+            eps_mat[pl-1,pl-1] += -1j * sigma_e/omega_src
+            mu_mat[pl-1,pl-1] += -1j * sigma_m/omega_src
+
+
+# Extraire la diagonale (valeurs de permittivité)
+eps_diag = eps_mat.diagonal()
+
+# Remettre en forme 2D
+eps_2D = eps_diag.reshape((Ny_tot, Nx_tot))
+
+# Plot partie réelle
+plt.figure()
+plt.imshow(np.real(eps_2D), origin='lower', aspect='auto')
+plt.colorbar(label='Re(ε)')
+plt.title("Permittivité (partie réelle)")
+plt.xlabel("x")
+plt.ylabel("y")
+
+# Plot partie imaginaire (PML)
+plt.figure()
+plt.imshow(np.imag(eps_2D), origin='lower', aspect='auto')
+plt.colorbar(label='Im(ε)')
+plt.title("Permittivité (partie imaginaire - PML)")
+plt.xlabel("x")
+plt.ylabel("y")
+
+plt.show()
 
 mu_mat_inv = mu_mat.power(-1)
 eps_mat_inv = eps_mat.power(-1)
