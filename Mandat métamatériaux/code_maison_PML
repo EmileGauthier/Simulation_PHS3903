@@ -38,8 +38,8 @@ Nx_tot = Nx + 2*N_PML
 Ny_tot = Ny + 2*N_PML
 
 ### Distribution de la permittivité et de la perméabilité
-eps_mat_inv = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
-mu_mat_inv = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+eps_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+mu_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
 
 for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
     y=(i-1)*dy
@@ -47,19 +47,20 @@ for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un m
         x=(j-1)*dx
         pl = (i-1)*Nx_tot + j
 
-        mu_mat_inv[pl-1,pl-1] = 1/mu0
+        mu_mat[pl-1,pl-1] = mu0
         
         if y - Ly_PML <= L_eau:
             # Le noeud se trouve dans l'eau
-            eps_mat_inv[pl-1,pl-1] = 1/eps_eau
+            eps_mat[pl-1,pl-1] = eps_eau
         elif y - Ly_PML >= L_eau and y - Ly_PML <= (L_eau + L_si):
             # Le noeud se trouve dans la couche de silicium
-            eps_mat_inv[pl-1,pl-1] = 1/eps_si
+            eps_mat[pl-1,pl-1] = eps_si
         else:
             # Le noeud se trouve dans la couche d'or
-            eps_mat_inv[pl-1,pl-1] = 1/eps_or
+            eps_mat[pl-1,pl-1] = eps_or
 
-        
+mu_mat_inv = mu_mat.power(-1)
+eps_mat_inv = eps_mat.power(-1)
 
 # Visualisation permittivité
 #plt.spy(np.real(eps_mat_inv),markersize=2)
