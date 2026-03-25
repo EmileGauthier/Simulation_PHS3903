@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 from scipy.sparse import diags
+import scipy.sparse.linalg as spla
 
 ### ÉTAPE D'INITIALISATION
 
@@ -15,9 +16,12 @@ c = 2.9979e8 # Vitesse de la lumière dans le vide (m/s)
 # Paramètres physiques
 wavelength_src = 568e-9 # Pic d'émission du Alexa Fluor 555 (m)
 omega_src = 2*np.pi*c/wavelength_src
-eps_eau = eps0 * 1.78 # Permittivité relative de l'eau à 568 nm
-eps_or = eps0 * (-14.07 + 0.32j) # Permittivité relative de l'or à 568 nm
-eps_si = eps0 * (16.24 + 0.26j) # Permittivité relative du silicium à 568 nm
+#eps_eau = eps0 * 1.78 # Permittivité relative de l'eau à 568 nm
+#eps_or = eps0 * (14.07 + 0.32j) # Permittivité relative de l'or à 568 nm
+#eps_si = eps0 * (16.24 + 0.26j) # Permittivité relative du silicium à 568 nm
+eps_eau = eps0 * 1 # Permittivité relative de l'eau à 568 nm
+eps_or = eps0 * 2 # Permittivité relative de l'or à 568 nm
+eps_si = eps0 * 3 # Permittivité relative du silicium à 568 nm
 
 # Paramètres géométriques
 L_eau = 0.5e-6 # Épaisseur de la couche d'eau (m)
@@ -31,7 +35,7 @@ dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
 
 Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
 Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
-N_PML = int(0.3*Ny) # Nombre de noeuds pour les PML
+N_PML = int(0.8*Ny) # Nombre de noeuds pour les PML
 Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
 Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
 Nx_tot = Nx + 2*N_PML
@@ -59,9 +63,9 @@ def distance_from_frontier(i,j,Ny,Nx,N_PML):
         dist_x = j - Nx - N_PML
     return dist_x, dist_y, in_PML
 
-n = 1
-R_0 = 6.14e-6
-sigma_max = 1e6*-n * eps0*c*np.log(R_0)/(2*Lx_PML)
+n = 5/2
+lnR_0 = -12
+sigma_max = - n * eps0 * c * lnR_0/(2*Lx_PML)
 
 for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
     y=(i-1)*dy
@@ -91,8 +95,8 @@ for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un m
             sigma_e = sigma_max * ((dist_x/N_PML)**n + (dist_y/N_PML)**n)
             sigma_m = mu0 * sigma_e / eps0
 
-            eps_mat[pl-1,pl-1] += -1j * sigma_e/omega_src
-            mu_mat[pl-1,pl-1] += -1j * sigma_m/omega_src
+            eps_mat[pl-1,pl-1] += 1j * sigma_e/omega_src
+            mu_mat[pl-1,pl-1] += 1j * sigma_m/omega_src
 
 
 # Extraire la diagonale (valeurs de permittivité)
@@ -103,7 +107,7 @@ eps_2D = eps_diag.reshape((Ny_tot, Nx_tot))
 
 # Plot partie réelle
 plt.figure()
-plt.imshow(np.real(eps_2D), origin='lower', aspect='auto')
+plt.imshow(np.real(eps_2D)/eps0, origin='lower', aspect='auto')
 plt.colorbar(label='Re(ε)')
 plt.title("Permittivité (partie réelle)")
 plt.xlabel("x")
@@ -111,7 +115,7 @@ plt.ylabel("y")
 
 # Plot partie imaginaire (PML)
 plt.figure()
-plt.imshow(np.imag(eps_2D), origin='lower', aspect='auto')
+plt.imshow(np.imag(eps_2D)/eps0, origin='lower', aspect='auto')
 plt.colorbar(label='Im(ε)')
 plt.title("Permittivité (partie imaginaire - PML)")
 plt.xlabel("x")
@@ -119,8 +123,9 @@ plt.ylabel("y")
 
 plt.show()
 
-mu_mat_inv = mu_mat.power(-1)
-eps_mat_inv = eps_mat.power(-1)
+
+eps_diag = eps_mat.diagonal()
+eps_mat_inv = sp.sparse.diags(1/eps_diag)
 
 # Implémentation de la source
 
@@ -163,8 +168,8 @@ for i in np.arange(1,Ny_tot+1,1):
 
 # Formatage de matrices (nxm)x(nxm) pour la résolution numérique
 
-A = Dx*eps_mat_inv*Dx + Dy*eps_mat_inv*Dy + (omega_src**2)*mu_mat_inv
-b = Dy*eps_mat_inv*jx - Dx*eps_mat_inv*jy
+A = Dx @ eps_mat_inv @ Dx + Dy @ eps_mat_inv @ Dy + (omega_src**2)*mu_mat
+b = Dy @ eps_mat_inv @ jx - Dx @ eps_mat_inv @ jy
 
 lu=sp.sparse.linalg.splu(sp.sparse.lil_matrix.tocsc(A))
 hz=lu.solve(b)
@@ -176,5 +181,5 @@ Hz = hz.reshape((Ny_tot, Nx_tot))
 Ex = ex.reshape((Ny_tot, Nx_tot))
 Ey = ey.reshape((Ny_tot, Nx_tot))
 
-plt.imshow(np.real(Ey),cmap='viridis')
+plt.imshow(np.log(np.real(Hz)),cmap='viridis')
 plt.show()
