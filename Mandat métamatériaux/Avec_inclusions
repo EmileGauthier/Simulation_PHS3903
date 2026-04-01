@@ -1,0 +1,190 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy as sp
+from scipy.sparse import diags
+import scipy.sparse.linalg as spla
+import time
+
+### ÉTAPE D'INITIALISATION
+
+## Paramètres
+
+# Constantes physiques 
+mu0 = 1.2567e-6 # Perméabilité du vide (H/m)
+eps0 = 8.8542e-12 # Permittivité du vide (F/m)
+c = 2.9979e8 # Vitesse de la lumière dans le vide (m/s)
+
+# Paramètres physiques
+wavelength_src = 568e-9 # Pic d'émission du Alexa Fluor 555 (m)
+omega_src = 2*np.pi*c/wavelength_src
+#eps_eau = eps0 * 1.78 # Permittivité relative de l'eau à 568 nm
+#eps_or = eps0 * (14.07 + 0.32j) # Permittivité relative de l'or à 568 nm
+#eps_si = eps0 * (16.24 + 0.26j) # Permittivité relative du silicium à 568 nm
+eps_eau = eps0 * 1 # Permittivité relative de l'eau à 568 nm
+eps_or = eps0 * 2 # Permittivité relative de l'or à 568 nm
+eps_si = eps0 * 3 # Permittivité relative du silicium à 568 nm
+
+# Paramètres géométriques
+L_eau = 0.5e-6 # Épaisseur de la couche d'eau (m)
+L_si = 1.0e-6 # Épaisseur de la couche de silicium (m)
+L_or = 0.5e-6 # Épaisseur de la couche d'or (m)
+Lx = 1.0e-6 # Largeur du domaine de simulation en x (sans PML) (m)
+Ly = L_eau + L_si + L_or # Largeur du domaine de simulation en y (sans PML) (m)
+
+# Pour les inclusions
+inclusions_bool = True
+r = 0.04e-6 # Rayon des inclusions
+Nx_inc = 10 # Nombre selon x
+Ny_inc = 10 # Nombre selon y
+period = 0.1e-6 # Espacement centre-à-centre
+
+dx = 0.01e-6 # Pas de discrétisation dans la direction x (m)
+dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
+
+Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
+Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
+N_PML = int(0.8*Ny) # Nombre de noeuds pour les PML
+Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
+Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
+Nx_tot = Nx + 2*N_PML
+Ny_tot = Ny + 2*N_PML
+
+### Distribution de la permittivité et de la perméabilité
+eps_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+mu_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+
+def distance_from_frontier(i,j,Ny,Nx,N_PML):
+    dist_x = 0
+    dist_y = 0
+    in_PML = False
+    if i <= N_PML:
+        in_PML = True
+        dist_y = N_PML - i
+    if i >= Ny + N_PML:
+        in_PML = True
+        dist_y = i - N_PML - Ny
+    if j <= N_PML:
+        in_PML = True
+        dist_x = N_PML-j
+    if j >= Nx + N_PML:
+        in_PML = True
+        dist_x = j - Nx - N_PML
+    return dist_x, dist_y, in_PML
+
+n = 5/2
+lnR_0 = 2 * -12
+sigma_max = - n * eps0 * c * lnR_0/(2*Lx_PML)
+
+for i in np.arange(1,Ny_tot+1,1):
+    y=(i-1)*dy
+    for j in np.arange(1,Nx_tot+1,1):
+        x=(j-1)*dx
+        pl = (i-1)*Nx_tot + j
+
+        # Sans PML
+        mu_mat[pl-1,pl-1] = mu0
+        
+        if y - Ly_PML <= L_eau:
+            eps_mat[pl-1,pl-1] = eps_eau
+        elif y - Ly_PML >= L_eau and y - Ly_PML <= (L_eau + L_si):
+            eps_mat[pl-1,pl-1] = eps_si
+        else:
+            eps_mat[pl-1,pl-1] = eps_or
+
+        # Ajout des PML
+        dist_x, dist_y, in_PML = distance_from_frontier(i,j,Ny,Nx,N_PML)
+
+        if in_PML == True:
+            sigma_e = sigma_max * ((dist_x/N_PML)**n + (dist_y/N_PML)**n)
+            sigma_m = mu0 * sigma_e / eps0
+
+            eps_mat[pl-1,pl-1] += 1j * sigma_e/omega_src
+            mu_mat[pl-1,pl-1] += 1j * sigma_m/omega_src
+
+        # Inclusions circulaires
+        if inclusions_bool == True:
+            x_center = dx*N_PML + Lx/2
+            y_center = dy*N_PML + Ly/2
+
+            x0 = x_center - (Nx_inc - 1) / 2 * period
+            y0 = y_center - (Ny_inc - 1) / 2 * period
+
+            for ix in range(Nx_inc):
+                for iy in range(Ny_inc):
+                    xc = x0 + ix * period
+                    yc = y0 + iy * period
+                    if (x - xc)**2 + (y - yc)**2 <= r**2:
+                        eps_mat[pl-1,pl-1] = eps_or
+                        break  # Un seul match suffit
+                else:
+                    continue
+                break  # Sortir des deux boucles dès qu'une inclusion est trouvée
+
+# Extraire la diagonale (valeurs de permittivité)
+eps_diag = eps_mat.diagonal()
+
+# Remettre en forme 2D
+eps_2D = eps_diag.reshape((Ny_tot, Nx_tot))
+
+# Plot partie réelle
+plt.figure()
+plt.imshow(np.real(eps_2D[N_PML:Ny+N_PML,N_PML:Nx+N_PML])/eps0, origin='lower', aspect='auto')
+plt.colorbar(label='Re(ε)')
+plt.title("Permittivité (partie réelle)")
+plt.xlabel("x")
+plt.ylabel("y")
+
+# Plot partie imaginaire (PML)
+plt.figure()
+plt.imshow(np.imag(eps_2D)/eps0, origin='lower', aspect='auto')
+plt.colorbar(label='Im(ε)')
+plt.title("Permittivité (partie imaginaire - PML)")
+plt.xlabel("x")
+plt.ylabel("y")
+
+plt.show()
+
+
+eps_diag = eps_mat.diagonal()
+eps_mat_inv = sp.sparse.diags(1/eps_diag)
+
+# Implémentation de la source
+
+x_source = Lx/2
+y_source = L_eau/2
+
+j_source = int(np.rint(x_source/dx + 1)) + N_PML
+i_source = int(np.rint(y_source/dy + 1)) + N_PML
+
+jx = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+jy = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+jx[(i_source-1)*Nx_tot+(j_source-1)] = 1
+
+
+### Formatage des matrices de dérivées
+
+Dxf = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double) 
+Dyf = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double)  
+
+for i in np.arange(1,Ny_tot+1,1):
+    for j in np.arange(1,Nx_tot+1,1):
+        # remplir la ligne pl de la matrice M
+        pl = (i-1)*Nx_tot + j
+
+        if i == Ny_tot:
+            pc = pl; Dyf[pl-1,pc-1] = -1/dy
+            pc = j; Dyf[pl-1,pc-1] = 1/dy
+        elif j == Nx_tot:
+            pc = pl; Dxf[pl-1,pc-1] = -1/dx
+            pc = (i-1)*Nx_tot + 1; Dxf[pl-1,pc-1] = 1/dx
+        else:
+            pc = pl; Dyf[pl-1,pc-1] = -1/dy; Dxf[pl-1,pc-1] = -1/dx
+            pc = (i)*Nx_tot+j; Dyf[pl-1,pc-1] = 1/dy
+            pc = (i-1)*Nx_tot+(j+1); Dxf[pl-1,pc-1] = 1/dx
+
+Dxb = -Dxf.T
+Dyb = -Dyf.T
+
+# Visualisation Dx
+#plt.spy(Dx,markersize=2)
+#plt.show()
