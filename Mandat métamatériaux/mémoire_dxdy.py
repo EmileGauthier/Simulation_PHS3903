@@ -1,0 +1,339 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy as sp
+from scipy.sparse import diags
+import scipy.sparse.linalg as spla
+
+
+
+### ÉTAPE D'INITIALISATION
+
+## Paramètres
+
+# Constantes physiques 
+mu0 = 1.2567e-6 # Perméabilité du vide (H/m)
+eps0 = 8.8542e-12 # Permittivité du vide (F/m)
+c = 2.9979e8 # Vitesse de la lumière dans le vide (m/s)
+
+# Paramètres physiques
+wavelength_src = 568e-9 # Pic d'émission du Alexa Fluor 555 (m)
+omega_src = 2*np.pi*c/wavelength_src
+#eps_eau = eps0 * 1.78 # Permittivité relative de l'eau à 568 nm
+#eps_or = eps0 * (14.07 + 0.32j) # Permittivité relative de l'or à 568 nm
+#eps_si = eps0 * (16.24 + 0.26j) # Permittivité relative du silicium à 568 nm
+eps_eau = eps0 * 1 # Permittivité relative de l'eau à 568 nm
+eps_or = eps0 * 2 # Permittivité relative de l'or à 568 nm
+eps_si = eps0 * 3 # Permittivité relative du silicium à 568 nm
+
+# Paramètres géométriques
+L_eau = 0.5e-6 # Épaisseur de la couche d'eau (m)
+L_si = 1.0e-6 # Épaisseur de la couche de silicium (m)
+L_or = 0.5e-6 # Épaisseur de la couche d'or (m)
+Lx = 1.0e-6 # Largeur du domaine de simulation en x (sans PML) (m)
+Ly = L_eau + L_si + L_or # Largeur du domaine de simulation en y (sans PML) (m)
+
+dx = 0.01e-6 # Pas de discrétisation dans la direction x (m)
+dy = 0.01e-6 # Pas de discrétisation dans la direction y (m)
+
+Nx=int(np.rint(Lx/dx + 1)) # Nombre de noeuds dans la direction x (excluant les PML)
+Ny=int(np.rint(Ly/dy + 1)) # Nombre de noeuds dans la direction y (excluant les PML)
+N_PML = int(0.8*Ny) # Nombre de noeuds pour les PML
+Lx_PML = N_PML*dx # Épaisseur des régions PML dans la direction x (m)
+Ly_PML = N_PML*dy # Épaisseur des régions PML dans la direction y (m)
+Nx_tot = Nx + 2*N_PML
+Ny_tot = Ny + 2*N_PML
+
+fact_ar = np.array([5, 10, 15, 20], dtype=np.double)# Facteurs multipliant le pas de discrétisation
+mem_ar = np.zeros(fact_ar.size, dtype=np.double)# Mémoire nécessaire pour stocker les matrices L et U
+d_ar = np.zeros(fact_ar.size, dtype=np.double)# Array avec les pas de discrétisation en mètre
+
+ci = -1
+for fact in fact_ar:
+    ci = ci + 1
+    dx = fact * 0.01e-6  # e.g. 0.05e-6, 0.1e-6, 0.15e-6, 0.2e-6
+    dy = dx
+
+    # Recalculate grid sizes for this dx/dy
+    Nx = int(np.rint(Lx/dx + 1))
+    Ny = int(np.rint(Ly/dy + 1))
+    N_PML = int(0.8*Ny)
+    Lx_PML = N_PML*dx
+    Ly_PML = N_PML*dy
+    Nx_tot = Nx + 2*N_PML
+    Ny_tot = Ny + 2*N_PML
+
+    d_ar[ci] = dx
+
+
+    ### Distribution de la permittivité et de la perméabilité
+    eps_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+    mu_mat = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.complex128) 
+
+    def distance_from_frontier(i,j,Ny,Nx,N_PML):
+        dist_x = 0
+        dist_y = 0
+        in_PML = False
+        if i <= N_PML:
+            in_PML = True
+            dist_y = N_PML - i
+        if i >= Ny + N_PML:
+            in_PML = True
+            dist_y = i - N_PML - Ny
+        if j <= N_PML:
+            in_PML = True
+            dist_x = N_PML-j
+        if j >= Nx + N_PML:
+            in_PML = True
+            dist_x = j - Nx - N_PML
+        return dist_x, dist_y, in_PML
+
+    n = 5/2
+    lnR_0 = 2*-12
+    sigma_max = - n * eps0 * c * lnR_0/(2*Lx_PML)
+
+    for i in np.arange(1,Ny_tot+1,1): #i=1,..,Ny - numérotation des nœuds sur un maillage physique
+        y=(i-1)*dy
+        for j in np.arange(1,Nx_tot+1,1): #j=1,...,Nx - numérotation des nœuds sur un maillage physique
+            x=(j-1)*dx
+            pl = (i-1)*Nx_tot + j
+
+            # Sans PML
+
+            mu_mat[pl-1,pl-1] = mu0
+            
+            if y - Ly_PML <= L_eau:
+                # Le noeud se trouve dans l'eau
+                eps_mat[pl-1,pl-1] = eps_eau
+            elif y - Ly_PML >= L_eau and y - Ly_PML <= (L_eau + L_si):
+                # Le noeud se trouve dans la couche de silicium
+                eps_mat[pl-1,pl-1] = eps_si
+            else:
+                # Le noeud se trouve dans la couche d'or
+                eps_mat[pl-1,pl-1] = eps_or
+
+            # Ajout des PML
+
+            dist_x, dist_y, in_PML = distance_from_frontier(i,j,Ny,Nx,N_PML)
+
+            if in_PML == True:
+                sigma_e = sigma_max * ((dist_x/N_PML)**n + (dist_y/N_PML)**n)
+                sigma_m = mu0 * sigma_e / eps0
+
+                eps_mat[pl-1,pl-1] += 1j * sigma_e/omega_src
+                mu_mat[pl-1,pl-1] += 1j * sigma_m/omega_src
+
+
+    # Extraire la diagonale (valeurs de permittivité)
+    eps_diag = eps_mat.diagonal()
+
+    # Remettre en forme 2D
+    eps_2D = eps_diag.reshape((Ny_tot, Nx_tot))
+
+    # Plot partie réelle
+    # plt.figure()
+    # plt.imshow(np.real(eps_2D)/eps0, origin='lower', aspect='auto')
+    # plt.colorbar(label='Re(ε)')
+    # plt.title("Permittivité (partie réelle)")
+    # plt.xlabel("x")
+    # plt.ylabel("y")
+
+    # # Plot partie imaginaire (PML)
+    # plt.figure()
+    # plt.imshow(np.imag(eps_2D)/eps0, origin='lower', aspect='auto')
+    # plt.colorbar(label='Im(ε)')
+    # plt.title("Permittivité (partie imaginaire - PML)")
+    # plt.xlabel("x")
+    # plt.ylabel("y")
+
+    # plt.show()
+
+
+    eps_diag = eps_mat.diagonal()
+    eps_mat_inv = sp.sparse.diags(1/eps_diag)
+
+    # Implémentation de la source
+
+    x_source = Lx/2
+    y_source = L_eau/2
+
+    j_source = int(np.rint(x_source/dx + 1)) + N_PML
+    i_source = int(np.rint(y_source/dy + 1)) + N_PML
+
+    jx = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+    jy = np.zeros((Nx_tot*Ny_tot,1),dtype=np.double)
+    jx[(i_source-1)*Nx_tot+(j_source-1)] = 1
+
+    ### Formatage des matrices de dérivées
+
+    Dx = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double) 
+    Dy = sp.sparse.lil_matrix((Nx_tot*Ny_tot,Nx_tot*Ny_tot), dtype=np.double) 
+
+    for i in np.arange(1,Ny_tot+1,1):
+        for j in np.arange(1,Nx_tot+1,1):
+            # remplir la ligne pl de la matrice M
+            pl = (i-1)*Nx_tot + j
+
+            if i == Ny_tot:
+                pc = pl; Dy[pl-1,pc-1] = -1/dy
+                pc = j; Dy[pl-1,pc-1] = 1/dy
+            elif j == Nx_tot:
+                pc = pl; Dx[pl-1,pc-1] = -1/dx
+                pc = (i-1)*Nx_tot + 1; Dx[pl-1,pc-1] = 1/dx
+            else:
+                pc = pl; Dy[pl-1,pc-1] = -1/dy; Dx[pl-1,pc-1] = -1/dx
+                pc = (i)*Nx_tot+j; Dy[pl-1,pc-1] = 1/dy
+                pc = (i-1)*Nx_tot+(j+1); Dx[pl-1,pc-1] = 1/dx
+
+    # Visualisation Dx
+    #plt.spy(Dx,markersize=2)
+    #plt.show()
+
+    ### ÉTAPE DE RÉSOLUTION NUMÉRIQUE
+
+    # Formatage de matrices (nxm)x(nxm) pour la résolution numérique
+    for fact in enumerate(fact_ar):
+
+        A = Dx @ eps_mat_inv @ Dx + Dy @ eps_mat_inv @ Dy + (omega_src**2)*mu_mat
+        b = Dy @ eps_mat_inv @ jx - Dx @ eps_mat_inv @ jy
+
+        lu=sp.sparse.linalg.splu(sp.sparse.lil_matrix.tocsc(A))
+        hz=lu.solve(b)
+        mem_ar[i] = 3 * 8 * (lu.L.nnz + lu.U.nnz)
+
+
+
+    ex = (-1/(1j*omega_src))*eps_mat_inv*(-Dy*hz + jx)
+    ey = (-1/(1j*omega_src))*eps_mat_inv*(Dx*hz + jy)
+
+    Hz = hz.reshape((Ny_tot, Nx_tot))
+    Ex = ex.reshape((Ny_tot, Nx_tot))
+    Ey = ey.reshape((Ny_tot, Nx_tot))
+
+    #plt.imshow(np.log(np.real(Hz)),cmap='viridis')
+    #plt.show()
+
+    #Résolution de la permittivité
+    def permittivite_effective(eps_2D, Ex, Ey, multiple):
+        #Étape 1
+        #Pour tous les noeuds, trouver E_x, E_y and D_x and D_y en utilisant la relation D = premittivité * E
+        Dx_champ = eps_2D * Ex
+        Dy_champ = eps_2D * Ey
+
+        #Étape 2.1
+        #Créer un masque de rayon inférieur à la longueur d'onde qui se propage, pour cibler tous les noeuds dans le masque
+        rayon = multiple*dx
+        span_y = int(rayon/dy) #Définit combien de noeuds en y et en x on inclut dans la moyenne
+        span_x = int(rayon/dx) 
+
+        ky, kx = np.mgrid[-span_y:span_y+1, -span_x:span_x+1] #Définit kx et ky, les array qui définisse un grid carré autour d'un noeud donné
+        circle_mask = ((ky * dy)**2 + (kx * dx)**2) <= rayon**2 #Créer un masque circulaire pour ne prendre en compte que les voisins dans un rayon de 300nm
+        masque = circle_mask.astype(np.float64) #Definit la quantité de noeuds dans le masque
+        masque = masque / masque.sum() #Definit le poids de chaque noeud pour utiliser dans moyenne_masque (étape 2.2)
+
+        #Étape 2.2
+        from scipy.ndimage import convolve
+        #J'avais pensé faire des nested loops mais ça prend vrm plus de temps et de mémoire, et convolve le fait plus rapidement et avec
+        # des vecteurs
+        def moyenne_masque(champ):
+            return (convolve(np.real(champ), masque, mode='nearest')
+                + 1j * convolve(np.imag(champ), masque, mode='nearest')) #rajoute la partie réelle et imaginaire manuellement pq convolve ne supporte pas des compelexes
+        #[https://numpy.org/devdocs/reference/generated/numpy.convolve.html]
+
+        #Étape 2.3
+        #Fait la moyenne pour E et D en x et y 
+        Emoy_x = moyenne_masque(Ex)
+        Emoy_y = moyenne_masque(Ey)
+        Dmoy_x = moyenne_masque(Dx_champ)
+        Dmoy_y = moyenne_masque(Dy_champ)
+
+
+        #Étape 3.1
+        #Trouve la moyenne de la permittivité effective pour tous les noeuds
+        eps_eff_x = Dmoy_x/Emoy_x
+        eps_eff_y = Dmoy_y/Emoy_y
+
+        #eps_eff = (Dmoy_x*Emoy_x + Dmoy_y*Emoy_y)/(Emoy_y**2 + Emoy_x**2) #Pour préserver la partie complexe pour pouvoir mieux comparer, pq ça revient à la même chose
+
+        #Étape 3.2
+        #Définit les limites de la matrice eps_eff_si qui est pertinente pour notre analyse dans le silicium
+        i_si_start = N_PML + int(L_eau / dy) #décalé à cause des PML
+        i_si_end   = N_PML + int((L_eau + L_si) / dy)
+
+        eps_eff_si_x = eps_eff_x[i_si_start:i_si_end, N_PML:N_PML+Nx] #slice en 2D pour aller chercher que la partie de silicium
+        eps_eff_si_y = eps_eff_y[i_si_start:i_si_end, N_PML:N_PML+Nx]
+
+        #Étape 4
+        #Fait la moyenne des moyennes de permittivité effective
+        mean_eps_eff_x = np.mean(eps_eff_si_x)
+        mean_eps_eff_y = np.mean(eps_eff_si_y)
+        return mean_eps_eff_x, mean_eps_eff_y
+
+    
+
+# Régression
+
+def estimate_coef(x, y):
+    # number of observations/points
+    n = np.size(x)
+
+    # mean of x and y vector
+    m_x = np.mean(x)
+    m_y = np.mean(y)
+
+    # calculating cross-deviation and deviation about x
+    SS_xy = np.sum(y*x) - n*m_y*m_x
+    SS_xx = np.sum(x*x) - n*m_x*m_x
+
+    # calculating regression coefficients
+    b_1 = SS_xy / SS_xx
+    b_0 = m_y - b_1*m_x
+
+    return (b_0, b_1)
+
+# .005  10 minutes
+print(type(d_ar), type(mem_ar))
+plt.loglog(d_ar[::-1], mem_ar[::-1]/1024.0**3, '-o')
+plt.xlabel(r'Pas de discrétisation $\delta$ [m]', fontsize=12)
+plt.ylabel('Mémoire [Gb]', fontsize=12)
+plt.tight_layout()
+plt.show()
+
+(loga, p) = estimate_coef(np.log(d_ar[::-1]), np.log(mem_ar[::-1]))
+print("Valeur du coefficient A_mem :", np.exp(loga))
+print("Valeur de l'exposant p_mem :", p)
+
+
+
+#trying to implement memory as a function of the step dx=dy by multiplying dx=dy by fact_ar
+
+
+
+# dy_vals = np.array([0.05e-6, 0.1e-6, 0.15e-6, 0.2e-6])
+# dx_vals = np.array([0.05e-6, 0.1e-6, 0.15e-6, 0.2e-6])
+
+# mem_grid = np.zeros((len(dy_vals), len(dx_vals))) #initialise la grid de dx et dy à 0
+
+# for i, dy in enumerate(dy_vals):
+#     for j, dx in enumerate(dx_vals):
+#         mem_grid[i, j] = calcul_memoire(dx, dy)#pour les valeurs de dx et dy et la mémoire enregistrée dans calcul_memoire()
+
+# plt.imshow(
+#     mem_grid,
+#     extent=[dx_vals.min(), dx_vals.max(), dy_vals.min(), dy_vals.max()],
+#     origin='lower',
+#     aspect='auto'
+# )
+
+# plt.colorbar(label="Mémoire (bytes)")
+# plt.xlabel("dx")
+# plt.ylabel("dy")
+# plt.title("Mémoire en fonction de dx et dy")
+# plt.show()
+
+
+
+#code for the minimum step size that computer could handle, if it has x Go available
+# i can test for 2048 and for 8, which is my computer tbnk
+#considering dx and dy are equal 
+
+
