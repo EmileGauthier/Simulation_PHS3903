@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import root
 from permittivite_models import (model_bruggeman_complex, model_maxwell_garnett,
-                                  calcul_aire_occupe, eps_or, eps_si)
+                                  calcul_aire_occupe, eps_or, eps_si, eps0)
 
 periods = np.array([50, 60, 70, 80, 90, 100]) * 1e-9
 f_vals  = [calcul_aire_occupe(p) for p in periods]  # f decreases as period grows
@@ -15,11 +15,16 @@ for f in f_vals:
     bruggeman_vals.append(sol.x[0] + 1j * sol.x[1])
 
 maxwell_vals = [model_maxwell_garnett(f, eps_or, eps_si) for f in f_vals]
+
+# transforme pour avoir la permittivite effective relative
+bruggeman_vals_rel = [v / eps0 for v in bruggeman_vals]
+maxwell_vals_rel   = [v / eps0 for v in maxwell_vals]
+
 erreur_abs_bruggeman = [np.abs(np.real(curr) - np.real(prev))
-                        for prev, curr in zip(bruggeman_vals[:-1], bruggeman_vals[1:])]
+                        for prev, curr in zip(bruggeman_vals_rel[:-1], bruggeman_vals_rel[1:])]
 
 erreur_abs_maxwell = [np.abs(np.real(curr) - np.real(prev))
-                      for prev, curr in zip(maxwell_vals[:-1], maxwell_vals[1:])]
+                      for prev, curr in zip(maxwell_vals_rel[:-1], maxwell_vals_rel[1:])]
 
 fig, ax = plt.subplots()
 
@@ -42,8 +47,10 @@ ax.plot(periods[1:], fit_m, '-', color="lightblue",  label=f'Régression Maxwell
 
 ax.set_xlabel("Période [m]", fontsize = 15)
 ax.set_xscale('log')
-ax.set_ylabel("Erreur absolue",fontsize = 15)
+ax.set_ylabel("Erreur sur la permittivité effective",fontsize = 15)
 ax.set_yscale('log')
 ax.legend(fontsize = 12)
 plt.tight_layout()
 plt.show()
+plt.savefig('taille_inclusion_modele_emile_2')
+

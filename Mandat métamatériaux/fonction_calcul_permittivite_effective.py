@@ -267,12 +267,30 @@ def permittivite_effective(rayon, resultats):
     eps_eff_si_x = eps_eff_x[i_si_start:i_si_end, N_PML:N_PML+Nx] #slice en 2D pour aller chercher que la partie de silicium
     eps_eff_si_y = eps_eff_y[i_si_start:i_si_end, N_PML:N_PML+Nx]
 
-    #Étape 4 
-    #Fait la moyenne des moyennes de permittivité effective
-    mean_eps_eff_x = np.mean(eps_eff_si_x)
-    mean_eps_eff_y = np.mean(eps_eff_si_y)
 
-    return mean_eps_eff_x, mean_eps_eff_y
+    i_si_start = N_PML + int((L_eau + rayon) / dy) #décalé à cause des PML
+    i_si_end   = N_PML + int((L_eau + L_si - rayon) / dy)
+
+    j_si_start = N_PML + int(rayon/dx)
+    j_si_end   = N_PML + Nx - int(rayon/dx)
+
+    eps_eff_si_x = eps_eff_x[i_si_start:i_si_end, j_si_start:j_si_end] #slice en 2D pour aller chercher que la partie de silicium
+    eps_eff_si_y = eps_eff_y[i_si_start:i_si_end, j_si_start:j_si_end]
+
+
+
+
+    #Étape 4 
+    #Fait la moyenne des moyennes de permittivité effective relative
+    eps0 = 8.8542e-12
+    mean_eps_eff_x = np.mean(eps_eff_si_x) / eps0
+    mean_eps_eff_y = np.mean(eps_eff_si_y) / eps0
+    ecart_type_eps_eff_x = np.std(eps_eff_si_x, dtype=np.float64) / eps0
+    ecart_type_eps_eff_y = np.std(eps_eff_si_y, dtype=np.float64) / eps0
+    #covariance_eps_eff = np.cov(eps_eff_si_x/ eps0, eps_eff_si_y/eps0)
+    eps_si_x_rel = eps_eff_si_x/eps0
+    eps_si_y_rel = eps_eff_si_y/eps0
+    return mean_eps_eff_x, mean_eps_eff_y, ecart_type_eps_eff_x, ecart_type_eps_eff_y, eps_si_x_rel, eps_si_y_rel
 
 
 
